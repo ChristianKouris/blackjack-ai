@@ -62,16 +62,15 @@ class Agent:
                 self.tester_print(simulation, num_simulation, "MC")
             self.simulator.reset()  # Restart the simulator
 
-            # TODO: Remove the following dummy updates and implement MC-learning
-            # Note: Do not reset the simulator again in the rest of this simulation
-            # Hint: Simulate a full episode using "self.simulator.simulate_sequence(...)"
-            self.MC_values[self.simulator.state] += 1
-            self.S_MC[self.simulator.state] += 1
-            self.N_MC[self.simulator.state] += 1
-            # Hint: You need to compute reward-to-go for each state in the episode
-            # Useful variables:
-            #     - DISCOUNT
-            #     - self.MC_values     (read comments in self.__init__)
+            episode = self.simulator.simulate_sequence(self.default_policy)
+            for i in range(len(episode)):
+                child_states = episode[i:len(episode)]
+                child_sum = 0
+                for j in range(len(child_states)):
+                    child_sum += child_states[j][1] * pow(DISCOUNT, j)
+                self.S_MC[episode[i][0]] += child_sum
+                self.N_MC[episode[i][0]] += 1
+                self.MC_values[episode[i][0]] = self.S_MC[episode[i][0]] / self.N_MC[episode[i][0]]
     
     def TD_run(self, num_simulation, tester=False):
         #Perform num_simulation rounds of simulations in each cycle of the overall game loop
@@ -80,18 +79,23 @@ class Agent:
             if tester:
                 self.tester_print(simulation, num_simulation, "TD")
             self.simulator.reset()
-
-            # TODO: Remove the following dummy updates and implement TD-learning
-            # Note: Do not reset the simulator again in the rest of this simulation
-            # Hint: You need a loop that takes one step simulation each time, until state is "None" which indicates termination
-            self.TD_values[self.simulator.state] += 1
-            self.N_TD[self.simulator.state] += 1
-            # Hint: current state can be accessed by "self.simulator.state"
-            # Hint: Simulate one step using "self.simulator.simulate_one_step(...)"
-            # Hint: The learning rate alpha is given by "self.alpha(...)"
-            # Useful variables:
-            #     - DISCOUNT
-            #     - self.TD_values  (read comments in self.__init__)
+            loop = True
+            gamma = 0
+            while( loop ):
+                old_state = self.simulator.state
+                old_val = self.TD_values[old_state]
+                reward = self.simulator.check_reward()
+                (next_state, next_reward) = self.simulator.simulate_one_step(self.default_policy(old_state))
+                self.N_TD[old_state] += 1
+                alpha_n = self.alpha(self.N_TD[old_state])
+                next_val = 0
+                if (next_state == None):
+                    loop = False
+                else:
+                    next_val = self.TD_values[next_state]
+                new_val = old_val + alpha_n*(reward + pow(DISCOUNT, gamma)*next_val - old_val)
+                self.TD_values[old_state] = new_val
+                gamma += 1
                 
     def Q_run(self, num_simulation, tester=False):
         #Perform num_simulation rounds of simulations in each cycle of the overall game loop
@@ -100,26 +104,37 @@ class Agent:
             if tester:
                 self.tester_print(simulation, num_simulation, "Q")
             self.simulator.reset()
-
-            # TODO: Remove the following dummy update and implement Q-learning
-            # Note: Do not reset the simulator again in the rest of this simulation
-            # Hint: You need a loop that takes one step simulation each time, until state is "None" which indicates termination
-            self.Q_values[self.simulator.state][0] += 1
-            self.Q_values[self.simulator.state][1] += 1
-            self.N_Q[self.simulator.state] += 1
-            # Hint: current state can be accessed by "self.simulator.state"
-            # Hint: Simulate one step using "self.simulator.simulate_one_step(...)"
-            # Hint: The learning rate alpha is given by "self.alpha(...)"
-            # Hint: Implement epsilon-greedy method in "self.pick_action(...)"
-            # Useful variables:
-            #     - DISCOUNT
-            #     - self.Q_values  (read comments in self.__init__)
-
+            loop = True
+            gamma = 0
+            while( loop ):
+                old_state = self.simulator.state
+                epsilon = 0.4
+                action = self.pick_action(old_state, epsilon)
+                reward = self.simulator.check_reward()
+                (next_state, next_reward) = self.simulator.simulate_one_step(action)
+                old_val = self.Q_values[old_state][action]
+                self.N_Q[old_state] += 1
+                alpha_n = self.alpha(self.N_Q[old_state])
+                next_val = 0
+                if (next_state == None):
+                    loop = False
+                else:
+                    if( self.Q_values[next_state][1] > self.Q_values[next_state][0] ):
+                        next_val = self.Q_values[next_state][1]
+                    else:
+                        next_val = self.Q_values[next_state][0]
+                new_val = old_val + alpha_n*(reward + pow(DISCOUNT, gamma)*next_val - old_val)
+                self.Q_values[old_state][action] = new_val
+                gamma += 1
+            
     def pick_action(self, s, epsilon):
-        # Replace the following random return value with the epsilon-greedy strategy
-        # Hint: Generate a random number with `random.random()` and compare with epsilon
-        # Hint: A random action is just `random.randint(0,1)`
-        return random.randint(0, 1)
+        if(random.random() < epsilon):
+            return random.randint(0, 1)
+        else:
+            if( self.Q_values[s][1] > self.Q_values[s][0] ):
+                return 1
+            else:
+                return 0
 
     #Note: do not modify
     def autoplay_decision(self, state):
